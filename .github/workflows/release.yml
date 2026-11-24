@@ -1,0 +1,74 @@
+# Push a tag like v0.2.0 to build a signed APK and attach it to a GitHub release.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NDK_VERSION: "30.0.16248370"
+  PLATFORM: "android-37"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform and NDK
+        run: sdkmanager "platforms;${PLATFORM}" "ndk;${NDK_VERSION}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-ndk --locked
+
+      - name: Build Rust library
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
+          export ANDROID_JAR="$ANDROID_HOME/platforms/$PLATFORM/android.jar"
+          cargo ndk -t arm64-v8a -P 26 -o android/app/src/main/jniLibs build --release -p gymbuddy --lib
+
+      - name: Decode signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GYMBUDDY_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "GYMBUDDY_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No GYMBUDDY_KEYSTORE_BASE64 secret; the APK is signed with a throwaway debug key."
+          fi
+
+      - name: Build APK
+        env:
+          GYMBUDDY_KEYSTORE_PASSWORD: ${{ secrets.GYMBUDDY_KEYSTORE_PASSWORD }}
+          GYMBUDDY_KEY_ALIAS: ${{ secrets.GYMBUDDY_KEY_ALIAS }}
+          GYMBUDDY_KEY_PASSWORD: ${{ secrets.GYMBUDDY_KEY_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          case "$VERSION" in [0-9]*) ;; *) VERSION="0.0.0-dev" ;; esac
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cd android
+          ./gradlew assembleRelease --console=plain \
+            -PversionName="$VERSION" -PversionCode="${{ github.run_number }}"
+          mv app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/gymbuddy-$VERSION.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: gymbuddy-*.apk
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gymbuddy-*.apk
+          generate_release_notes: true

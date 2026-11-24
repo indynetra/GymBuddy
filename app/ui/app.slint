@@ -1,0 +1,950 @@
+import { LineEdit, ScrollView, ListView } from "std-widgets.slint";
+
+export struct SetRow { label: string, kind: int, weight: string, reps: string, done: bool, previous: string }
+export struct ExerciseBlock { name: string, muscle: string, rest: string, sets: [SetRow] }
+export struct RoutineItem { id: string, name: string, summary: string }
+export struct HistoryItem { id: string, name: string, date: string, duration: string, volume: string, sets: string, summary: string }
+export struct ExerciseItem { id: string, name: string, subtitle: string, best: string }
+export struct Bar { label: string, value: float, text: string }
+export struct KV { key: string, value: string }
+export struct Share { name: string, value: string, fraction: float }
+export struct DetailBlock { name: string, lines: [string] }
+
+export global Theme {
+    out property <color> bg: #0f1115;
+    out property <color> surface: #181b21;
+    out property <color> surface2: #242832;
+    out property <color> border: #313641;
+    out property <color> text: #eef1f5;
+    out property <color> muted: #8b95a3;
+    out property <color> accent: #4f8cff;
+    out property <color> good: #2fbf71;
+    out property <color> warn: #f5a524;
+    out property <color> danger: #ef5350;
+    out property <color> drop: #b07cff;
+}
+
+component Icon inherits Path {
+    in property <color> tint: Theme.text;
+    stroke: self.tint;
+    stroke-width: 2.4px;
+    fill: transparent;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    width: 22px;
+    height: 22px;
+}
+
+component Btn inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> small: false;
+    callback clicked;
+    min-height: root.small ? 34px : 46px;
+    border-radius: root.small ? 8px : 12px;
+    background: root.primary ? (ta.pressed ? Theme.accent.darker(0.25) : Theme.accent) : (ta.pressed ? Theme.border : Theme.surface2);
+    HorizontalLayout {
+        padding-left: root.small ? 10px : 16px;
+        padding-right: self.padding-left;
+        Text {
+            text: root.text;
+            color: root.danger ? Theme.danger : (root.primary ? #ffffff : Theme.text);
+            font-size: root.small ? 13px : 15px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+component IconBtn inherits Rectangle {
+    in property <string> commands;
+    in property <color> tint: Theme.text;
+    callback clicked;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    background: ta.pressed ? Theme.surface2 : transparent;
+    Icon { commands: root.commands; tint: root.tint; }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: 14px;
+}
+
+component Title inherits Text {
+    color: Theme.text;
+    font-size: 26px;
+    font-weight: 800;
+}
+
+component Section inherits Text {
+    color: Theme.muted;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+component Muted inherits Text {
+    color: Theme.muted;
+    font-size: 13px;
+    wrap: word-wrap;
+}
+
+component Header inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    callback back;
+    padding: 8px;
+    padding-right: 12px;
+    spacing: 4px;
+    height: 60px;
+    IconBtn { commands: "M15 5 L8 12 L15 19"; clicked => { root.back(); } }
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Text { text: root.title; color: Theme.text; font-size: 18px; font-weight: 700; overflow: elide; }
+        if root.subtitle != "" : Text { text: root.subtitle; color: Theme.muted; font-size: 13px; overflow: elide; }
+    }
+    @children
+}
+
+component NumField inherits Rectangle {
+    in-out property <string> value;
+    in property <string> placeholder;
+    in property <bool> decimal: true;
+    in property <bool> done;
+    callback edited(string);
+    height: 38px;
+    border-radius: 8px;
+    background: root.done ? transparent : Theme.surface2;
+    ti := TextInput {
+        x: 4px;
+        width: parent.width - 8px;
+        height: parent.height;
+        text <=> root.value;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        color: Theme.text;
+        font-size: 16px;
+        font-weight: 600;
+        single-line: true;
+        input-type: root.decimal ? InputType.decimal : InputType.number;
+        edited => { root.edited(self.text); }
+    }
+    if ti.text == "" : Text {
+        text: root.placeholder;
+        color: Theme.muted;
+        font-size: 16px;
+    }
+}
+
+component Check inherits Rectangle {
+    in property <bool> checked;
+    callback toggled;
+    width: 38px;
+    height: 34px;
+    border-radius: 8px;
+    background: root.checked ? Theme.good : Theme.surface2;
+    Icon { commands: "M5 12.5 L10 17.5 L19 7"; tint: root.checked ? #ffffff : Theme.muted; }
+    TouchArea { clicked => { root.toggled(); } }
+}
+
+component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked;
+    height: 34px;
+    border-radius: 17px;
+    background: root.selected ? Theme.accent : Theme.surface2;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.text;
+            color: root.selected ? #ffffff : Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+component StatTile inherits Card {
+    in property <string> key;
+    in property <string> value;
+    horizontal-stretch: 1;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 2px;
+        Text { text: root.value; color: Theme.text; font-size: 22px; font-weight: 800; }
+        Text { text: root.key; color: Theme.muted; font-size: 12px; }
+    }
+}
+
+component BarChart inherits Card {
+    in property <string> title;
+    in property <[Bar]> bars;
+    in property <float> peak;
+    in property <float> floor: 0;
+    in property <color> bar-color: Theme.accent;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        Section { text: root.title; }
+        HorizontalLayout {
+            height: 150px;
+            spacing: 6px;
+            for b in root.bars : VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: end;
+                spacing: 4px;
+                Text { text: b.text; color: Theme.muted; font-size: 10px; horizontal-alignment: center; }
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        min-width: 10px;
+                        preferred-width: 44px;
+                        max-width: 44px;
+                        height: root.peak > root.floor ? max(4px, 100px * (b.value - root.floor) / (root.peak - root.floor)) : 4px;
+                        border-radius: 4px;
+                        background: b.value > 0 ? root.bar-color : Theme.surface2;
+                    }
+                }
+                Text { text: b.label; color: Theme.muted; font-size: 10px; horizontal-alignment: center; }
+            }
+        }
+    }
+}
+
+component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <string> commands;
+    in property <bool> active;
+    callback clicked;
+    horizontal-stretch: 1;
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 56px;
+                height: 30px;
+                border-radius: 15px;
+                background: root.active ? Theme.accent.with-alpha(0.22) : transparent;
+                Icon { commands: root.commands; tint: root.active ? Theme.accent : Theme.muted; }
+            }
+        }
+        Text {
+            text: root.text;
+            color: root.active ? Theme.text : Theme.muted;
+            font-size: 12px;
+            font-weight: root.active ? 700 : 500;
+            horizontal-alignment: center;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component AppWindow inherits Window {
+    title: "GymBuddy";
+    preferred-width: 412px;
+    preferred-height: 880px;
+    min-width: 340px;
+    min-height: 600px;
+    background: Theme.bg;
+    default-font-size: 15px;
+
+    // navigation
+    in-out property <int> tab: 0;
+    in-out property <string> overlay: "";
+
+    // home
+    in property <[RoutineItem]> routines;
+    in property <bool> has-active;
+
+    // active workout
+    in property <string> active-name;
+    in property <string> elapsed;
+    in property <string> active-summary;
+    in property <[ExerciseBlock]> active-exercises;
+    in property <string> unit-label: "kg";
+    in property <bool> rest-running;
+    in property <string> rest-left;
+    in property <float> rest-fraction;
+
+    // picker
+    in-out property <string> picker-query;
+    in property <string> picker-muscle;
+    in property <[string]> muscles;
+    in property <[ExerciseItem]> picker-items;
+
+    // history
+    in property <[HistoryItem]> history;
+    in property <HistoryItem> detail;
+    in property <[DetailBlock]> detail-blocks;
+
+    // exercise library and detail
+    in-out property <string> library-query;
+    in property <[ExerciseItem]> library;
+    in property <string> ex-name;
+    in property <string> ex-subtitle;
+    in property <[KV]> ex-stats;
+    in property <[Bar]> ex-bars;
+    in property <float> ex-max;
+    in property <float> ex-floor;
+    in property <[KV]> ex-sessions;
+
+    // stats and settings
+    in property <[KV]> totals;
+    in property <[Bar]> weekly-bars;
+    in property <float> weekly-max;
+    in property <[Share]> muscle-split;
+    in property <string> default-rest;
+    in property <string> import-status;
+
+    // routine editor
+    in-out property <string> routine-name;
+    in property <bool> routine-is-new;
+    in property <[ExerciseBlock]> routine-exercises;
+
+    // summary after finishing
+    in property <string> summary-title;
+    in property <[KV]> summary-stats;
+    in property <[string]> summary-records;
+
+    // feedback
+    in property <string> toast;
+    in property <string> confirm-text;
+
+    callback start-empty();
+    callback start-routine(string);
+    callback resume();
+    callback finish-workout();
+    callback discard-workout();
+    callback add-set(int);
+    callback remove-set(int, int);
+    callback toggle-done(int, int);
+    callback cycle-kind(int, int);
+    callback set-weight(int, int, string);
+    callback set-reps(int, int, string);
+    callback copy-previous(int, int);
+    callback remove-exercise(int);
+    callback rest-adjust(int, int);
+    callback rest-timer-adjust(int);
+    callback rest-skip();
+    callback open-picker(string);
+    callback picker-search(string);
+    callback picker-filter(string);
+    callback picker-pick(string);
+    callback create-custom(string);
+    callback open-history(string);
+    callback delete-history();
+    callback repeat-history();
+    callback history-to-routine();
+    callback library-search(string);
+    callback open-exercise(string);
+    callback new-routine();
+    callback edit-routine(string);
+    callback routine-sets(int, int);
+    callback routine-remove(int);
+    callback save-routine();
+    callback delete-routine();
+    callback toggle-unit();
+    callback default-rest-adjust(int);
+    callback import-hevy();
+    callback summary-to-routine();
+    callback close-overlay();
+    callback confirm-accept();
+    callback confirm-cancel();
+    callback back-pressed() -> bool;
+
+    forward-focus: keys;
+    init => { keys.focus(); }
+    changed overlay => { keys.focus(); }
+    changed tab => { keys.focus(); }
+    keys := FocusScope {
+      key-pressed(event) => {
+        if event.text == Key.Back || event.text == Key.Escape {
+            if root.back-pressed() { return accept; }
+        }
+        return reject;
+      }
+
+    VerticalLayout {
+        padding-top: root.safe-area-insets.top;
+        padding-bottom: root.safe-area-insets.bottom;
+        padding-left: root.safe-area-insets.left;
+        padding-right: root.safe-area-insets.right;
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            // ---------------- Workout tab ----------------
+            if root.overlay == "" && root.tab == 0 : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 16px;
+                spacing: 14px;
+                Title { text: "Workout"; }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        Btn {
+                            text: root.has-active ? "Resume workout" : "Start empty workout";
+                            primary: true;
+                            clicked => {
+                                if root.has-active { root.resume(); } else { root.start-empty(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-top: 8px;
+                            Section { text: "ROUTINES"; vertical-alignment: center; horizontal-stretch: 1; }
+                            Btn { text: "+ New routine"; small: true; clicked => { root.new-routine(); } }
+                        }
+                        if root.routines.length == 0 : Card {
+                            VerticalLayout {
+                                padding: 16px;
+                                Muted { text: "No routines yet. Create one, or finish a workout and save it as a routine."; }
+                            }
+                        }
+                        for r in root.routines : Card {
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 6px;
+                                Text { text: r.name; color: Theme.text; font-size: 17px; font-weight: 700; }
+                                Muted { text: r.summary; }
+                                HorizontalLayout {
+                                    padding-top: 4px;
+                                    spacing: 8px;
+                                    alignment: start;
+                                    Btn { text: "Start routine"; primary: true; small: true; clicked => { root.start-routine(r.id); } }
+                                    Btn { text: "Edit"; small: true; clicked => { root.edit-routine(r.id); } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---------------- History tab ----------------
+            if root.overlay == "" && root.tab == 1 : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 16px;
+                spacing: 14px;
+                Title { text: "History"; }
+                if root.history.length == 0 : Card {
+                    VerticalLayout {
+                        padding: 16px;
+                        Muted { text: "Finished workouts show up here."; }
+                    }
+                }
+                ListView {
+                    vertical-stretch: 1;
+                        for h in root.history : VerticalLayout {
+                          padding-bottom: 10px;
+                          Card {
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 6px;
+                                Text { text: h.name; color: Theme.text; font-size: 17px; font-weight: 700; }
+                                Muted { text: h.date; }
+                                HorizontalLayout {
+                                    spacing: 16px;
+                                    alignment: start;
+                                    Text { text: h.duration; color: Theme.text; font-size: 13px; }
+                                    Text { text: h.volume; color: Theme.text; font-size: 13px; }
+                                    Text { text: h.sets; color: Theme.text; font-size: 13px; }
+                                }
+                                Muted { text: h.summary; }
+                            }
+                            TouchArea { clicked => { root.open-history(h.id); } }
+                          }
+                        }
+                }
+            }
+
+            // ---------------- Exercises tab ----------------
+            if root.overlay == "" && root.tab == 2 : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 16px;
+                spacing: 12px;
+                Title { text: "Exercises"; }
+                LineEdit {
+                    placeholder-text: "Search exercises";
+                    text <=> root.library-query;
+                    edited(t) => { root.library-search(t); }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: start;
+                        for e in root.library : Rectangle {
+                            height: 60px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 1;
+                                    Text { text: e.name; color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide; }
+                                    Text { text: e.subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
+                                }
+                                Text { text: e.best; color: Theme.accent; font-size: 13px; vertical-alignment: center; }
+                            }
+                            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+                            TouchArea { clicked => { root.open-exercise(e.id); } }
+                        }
+                    }
+                }
+            }
+
+            // ---------------- Stats tab ----------------
+            if root.overlay == "" && root.tab == 3 : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 16px;
+                spacing: 14px;
+                Title { text: "Stats"; }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            for kv[i] in root.totals : StatTile { key: kv.key; value: kv.value; }
+                        }
+                        BarChart { title: "WEEKLY VOLUME"; bars: root.weekly-bars; peak: root.weekly-max; }
+                        Card {
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 8px;
+                                Section { text: "SETS PER MUSCLE · LAST 30 DAYS"; }
+                                if root.muscle-split.length == 0 : Muted { text: "No sets logged in the last 30 days."; }
+                                for m in root.muscle-split : HorizontalLayout {
+                                    spacing: 8px;
+                                    height: 22px;
+                                    Text { text: m.name; color: Theme.text; font-size: 13px; width: 90px; vertical-alignment: center; }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                        Rectangle {
+                                            x: 0;
+                                            height: 12px;
+                                            width: max(4px, parent.width * m.fraction);
+                                            border-radius: 6px;
+                                            background: Theme.good;
+                                        }
+                                    }
+                                    Text { text: m.value; color: Theme.muted; font-size: 13px; width: 30px; horizontal-alignment: right; vertical-alignment: center; }
+                                }
+                            }
+                        }
+                        Card {
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 10px;
+                                Section { text: "SETTINGS"; }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Weight unit"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Btn { text: root.unit-label == "kg" ? "kg  ·  switch to lb" : "lb  ·  switch to kg"; small: true; clicked => { root.toggle-unit(); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Default rest"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Btn { text: "−15s"; small: true; clicked => { root.default-rest-adjust(-15); } }
+                                    Text { text: root.default-rest; color: Theme.text; font-weight: 700; vertical-alignment: center; min-width: 44px; horizontal-alignment: center; }
+                                    Btn { text: "+15s"; small: true; clicked => { root.default-rest-adjust(15); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Import from Hevy"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Btn { text: "Import CSV"; small: true; clicked => { root.import-hevy(); } }
+                                }
+                                if root.import-status != "" : Muted { text: root.import-status; }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---------------- Active workout ----------------
+            if root.overlay == "active" : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                Header {
+                    title: root.active-name;
+                    subtitle: root.elapsed + "  ·  " + root.active-summary;
+                    back => { root.close-overlay(); }
+                    Btn { text: "Finish"; primary: true; small: true; clicked => { root.finish-workout(); } }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 12px;
+                        alignment: start;
+                        for ex[ei] in root.active-exercises : Card {
+                            VerticalLayout {
+                                padding: 12px;
+                                spacing: 6px;
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        Text { text: ex.name; color: Theme.accent; font-size: 16px; font-weight: 700; wrap: word-wrap; }
+                                        Text { text: ex.muscle; color: Theme.muted; font-size: 12px; }
+                                    }
+                                    IconBtn { commands: "M6 6 L18 18 M18 6 L6 18"; tint: Theme.muted; clicked => { root.remove-exercise(ei); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    Text { text: "Rest " + ex.rest; color: Theme.muted; font-size: 13px; vertical-alignment: center; }
+                                    Btn { text: "−15s"; small: true; clicked => { root.rest-adjust(ei, -15); } }
+                                    Btn { text: "+15s"; small: true; clicked => { root.rest-adjust(ei, 15); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    padding-top: 4px;
+                                    Text { text: "SET"; width: 34px; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-alignment: center; }
+                                    Text { text: "PREVIOUS"; width: 78px; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-alignment: center; }
+                                    Text { text: root.unit-label == "kg" ? "KG" : "LB"; horizontal-stretch: 1; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-alignment: center; }
+                                    Text { text: "REPS"; horizontal-stretch: 1; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-alignment: center; }
+                                    Rectangle { width: 38px; }
+                                    Rectangle { width: 26px; }
+                                }
+                                for s[si] in ex.sets : Rectangle {
+                                    height: 42px;
+                                    border-radius: 8px;
+                                    background: s.done ? Theme.good.with-alpha(0.16) : transparent;
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Rectangle {
+                                            width: 34px;
+                                            Text {
+                                                text: s.label;
+                                                font-size: 15px;
+                                                font-weight: 800;
+                                                color: s.kind == 1 ? Theme.warn : (s.kind == 2 ? Theme.drop : (s.kind == 3 ? Theme.danger : Theme.text));
+                                            }
+                                            TouchArea { clicked => { root.cycle-kind(ei, si); } }
+                                        }
+                                        Rectangle {
+                                            width: 78px;
+                                            Text { text: s.previous; color: Theme.muted; font-size: 12px; }
+                                            TouchArea { clicked => { root.copy-previous(ei, si); } }
+                                        }
+                                        NumField {
+                                            horizontal-stretch: 1;
+                                            y: 2px;
+                                            value <=> s.weight;
+                                            placeholder: "0";
+                                            done: s.done;
+                                            decimal: true;
+                                            edited(t) => { root.set-weight(ei, si, t); }
+                                        }
+                                        NumField {
+                                            horizontal-stretch: 1;
+                                            y: 2px;
+                                            value <=> s.reps;
+                                            placeholder: "0";
+                                            done: s.done;
+                                            decimal: false;
+                                            edited(t) => { root.set-reps(ei, si, t); }
+                                        }
+                                        Check { y: 4px; checked: s.done; toggled => { keys.focus(); root.toggle-done(ei, si); } }
+                                        Rectangle {
+                                            width: 26px;
+                                            Icon { commands: "M7 7 L17 17 M17 7 L7 17"; tint: Theme.muted; width: 16px; height: 16px; }
+                                            TouchArea { clicked => { root.remove-set(ei, si); } }
+                                        }
+                                    }
+                                }
+                                Btn { text: "+ Add set"; small: true; clicked => { keys.focus(); root.add-set(ei); } }
+                            }
+                        }
+                        if root.active-exercises.length == 0 : Card {
+                            VerticalLayout {
+                                padding: 16px;
+                                Muted { text: "Add your first exercise to get started. Tap a set number to mark it as warm-up (W), drop set (D) or failure (F)."; }
+                            }
+                        }
+                        Btn { text: "+ Add exercise"; primary: true; clicked => { root.open-picker("active"); } }
+                        Btn { text: "Discard workout"; danger: true; clicked => { root.discard-workout(); } }
+                        Rectangle { height: 40px; }
+                    }
+                }
+                if root.rest-running : Rectangle {
+                    height: 66px;
+                    background: Theme.surface2;
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        height: 4px;
+                        width: parent.width * root.rest-fraction;
+                        background: Theme.accent;
+                    }
+                    HorizontalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+                        Text { text: "Rest  " + root.rest-left; color: Theme.text; font-size: 20px; font-weight: 800; vertical-alignment: center; horizontal-stretch: 1; }
+                        Btn { text: "−15"; small: true; clicked => { root.rest-timer-adjust(-15); } }
+                        Btn { text: "+15"; small: true; clicked => { root.rest-timer-adjust(15); } }
+                        Btn { text: "Skip"; small: true; primary: true; clicked => { root.rest-skip(); } }
+                    }
+                }
+            }
+
+            // ---------------- Exercise picker ----------------
+            if root.overlay == "picker" : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                Header { title: "Add exercise"; back => { root.close-overlay(); } }
+                VerticalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    LineEdit {
+                        placeholder-text: "Search or type a new exercise";
+                        text <=> root.picker-query;
+                        edited(t) => { root.picker-search(t); }
+                    }
+                }
+                chips := Flickable {
+                    height: 50px;
+                    content-width: chip-row.preferred-width;
+                    chip-row := HorizontalLayout {
+                        padding: 8px;
+                        padding-left: 12px;
+                        spacing: 6px;
+                        Chip { text: "All"; selected: root.picker-muscle == ""; clicked => { root.picker-filter(""); } }
+                        for m in root.muscles : Chip { text: m; selected: root.picker-muscle == m; clicked => { root.picker-filter(m); } }
+                    }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        alignment: start;
+                        if root.picker-query != "" : Btn {
+                            text: "+ Create \"" + root.picker-query + "\"" + (root.picker-muscle == "" ? "" : " (" + root.picker-muscle + ")");
+                            small: true;
+                            clicked => { root.create-custom(root.picker-query); }
+                        }
+                        for e in root.picker-items : Rectangle {
+                            height: 58px;
+                            VerticalLayout {
+                                alignment: center;
+                                Text { text: e.name; color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide; }
+                                Text { text: e.subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
+                            }
+                            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+                            TouchArea { clicked => { root.picker-pick(e.id); } }
+                        }
+                    }
+                }
+            }
+
+            // ---------------- Workout detail ----------------
+            if root.overlay == "history" : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                Header { title: root.detail.name; subtitle: root.detail.date; back => { root.close-overlay(); } }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 12px;
+                        alignment: start;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            StatTile { key: "Duration"; value: root.detail.duration; }
+                            StatTile { key: "Volume"; value: root.detail.volume; }
+                            StatTile { key: "Sets"; value: root.detail.sets; }
+                        }
+                        for b in root.detail-blocks : Card {
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 4px;
+                                Text { text: b.name; color: Theme.accent; font-size: 16px; font-weight: 700; wrap: word-wrap; }
+                                for l in b.lines : Text { text: l; color: Theme.text; font-size: 14px; }
+                            }
+                        }
+                        Btn { text: "Repeat this workout"; primary: true; clicked => { root.repeat-history(); } }
+                        Btn { text: "Save as routine"; clicked => { root.history-to-routine(); } }
+                        Btn { text: "Delete workout"; danger: true; clicked => { root.delete-history(); } }
+                    }
+                }
+            }
+
+            // ---------------- Exercise detail ----------------
+            if root.overlay == "exercise" : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                Header { title: root.ex-name; subtitle: root.ex-subtitle; back => { root.close-overlay(); } }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 12px;
+                        alignment: start;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            for kv in root.ex-stats : StatTile { key: kv.key; value: kv.value; }
+                        }
+                        BarChart { title: "ESTIMATED 1RM PER SESSION"; bars: root.ex-bars; peak: root.ex-max; floor: root.ex-floor; bar-color: Theme.good; }
+                        Card {
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 6px;
+                                Section { text: "HISTORY"; }
+                                if root.ex-sessions.length == 0 : Muted { text: "Not logged yet."; }
+                                for kv in root.ex-sessions : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: kv.key; color: Theme.muted; font-size: 13px; width: 70px; }
+                                    Text { text: kv.value; color: Theme.text; font-size: 13px; wrap: word-wrap; horizontal-stretch: 1; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---------------- Routine editor ----------------
+            if root.overlay == "routine" : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                Header {
+                    title: root.routine-is-new ? "New routine" : "Edit routine";
+                    back => { root.close-overlay(); }
+                    Btn { text: "Save"; primary: true; small: true; clicked => { root.save-routine(); } }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 12px;
+                        alignment: start;
+                        LineEdit { placeholder-text: "Routine name, e.g. Push Day"; text <=> root.routine-name; }
+                        for ex[ei] in root.routine-exercises : Card {
+                            HorizontalLayout {
+                                padding: 12px;
+                                spacing: 6px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text { text: ex.name; color: Theme.accent; font-size: 15px; font-weight: 700; wrap: word-wrap; }
+                                    Text { text: ex.sets.length + " sets · " + ex.muscle; color: Theme.muted; font-size: 12px; }
+                                }
+                                Btn { text: "−"; small: true; clicked => { root.routine-sets(ei, -1); } }
+                                Btn { text: "+"; small: true; clicked => { root.routine-sets(ei, 1); } }
+                                IconBtn { commands: "M6 6 L18 18 M18 6 L6 18"; tint: Theme.muted; clicked => { root.routine-remove(ei); } }
+                            }
+                        }
+                        Btn { text: "+ Add exercise"; clicked => { root.open-picker("routine"); } }
+                        if !root.routine-is-new : Btn { text: "Delete routine"; danger: true; clicked => { root.delete-routine(); } }
+                    }
+                }
+            }
+
+            // ---------------- Finish summary ----------------
+            if root.overlay == "summary" : VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 20px;
+                spacing: 14px;
+                alignment: center;
+                Text { text: "Workout complete"; color: Theme.good; font-size: 15px; font-weight: 700; horizontal-alignment: center; }
+                Text { text: root.summary-title; color: Theme.text; font-size: 26px; font-weight: 800; horizontal-alignment: center; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    for kv in root.summary-stats : StatTile { key: kv.key; value: kv.value; }
+                }
+                if root.summary-records.length > 0 : Card {
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 4px;
+                        Text { text: "New personal records"; color: Theme.warn; font-size: 15px; font-weight: 700; }
+                        for r in root.summary-records : Text { text: r; color: Theme.text; font-size: 14px; wrap: word-wrap; }
+                    }
+                }
+                Btn { text: "Done"; primary: true; clicked => { root.close-overlay(); } }
+                Btn { text: "Save as routine"; clicked => { root.summary-to-routine(); } }
+            }
+        }
+
+        if root.overlay == "" && root.has-active : Rectangle {
+            height: 54px;
+            background: Theme.accent;
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                Text { text: root.active-name + "  ·  " + root.elapsed; color: #ffffff; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                Text { text: "Resume ›"; color: #ffffff; font-weight: 700; vertical-alignment: center; }
+            }
+            TouchArea { clicked => { root.resume(); } }
+        }
+
+        if root.overlay == "" : Rectangle {
+            height: 68px;
+            background: Theme.surface;
+            HorizontalLayout {
+                padding-top: 6px;
+                padding-bottom: 6px;
+                NavItem { text: "Workout"; active: root.tab == 0; commands: "M3 9 V15 M6 7 V17 M18 7 V17 M21 9 V15 M6 12 H18"; clicked => { root.tab = 0; } }
+                NavItem { text: "History"; active: root.tab == 1; commands: "M12 3 A9 9 0 1 0 12.01 3 M12 7 V12 L15.5 14"; clicked => { root.tab = 1; } }
+                NavItem { text: "Exercises"; active: root.tab == 2; commands: "M4 6 H20 M4 12 H20 M4 18 H14"; clicked => { root.tab = 2; } }
+                NavItem { text: "Stats"; active: root.tab == 3; commands: "M5 20 V12 M12 20 V5 M19 20 V9"; clicked => { root.tab = 3; } }
+            }
+        }
+    }
+    }
+
+    // toast
+    if root.toast != "" : Rectangle {
+        x: 24px;
+        width: parent.width - 48px;
+        y: parent.height - root.safe-area-insets.bottom - 150px;
+        height: 48px;
+        border-radius: 12px;
+        background: #000000e6;
+        Text { text: root.toast; color: #ffffff; font-size: 14px; }
+    }
+
+    // confirm dialog
+    if root.confirm-text != "" : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #000000b0;
+        TouchArea { }
+        Card {
+            x: 24px;
+            width: parent.width - 48px;
+            height: self.preferred-height;
+            y: (parent.height - self.height) / 2;
+            background: Theme.surface2;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 16px;
+                Text { text: root.confirm-text; color: Theme.text; font-size: 16px; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Btn { text: "Cancel"; small: true; clicked => { root.confirm-cancel(); } }
+                    Btn { text: "Confirm"; small: true; danger: true; clicked => { root.confirm-accept(); } }
+                }
+            }
+        }
+    }
+}
